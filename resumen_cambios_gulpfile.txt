@@ -1,0 +1,96 @@
+Resumen detallado de los cambios realizados en `gulpfile.js` para referencia futura.
+
+He reestructurado el código en lugar de solo borrar líneas, para hacerlo más moderno y correcto. A continuación, detallo qué partes se transformaron y por qué.
+
+### 1. Importación de Gulp
+
+**Código Original:**
+```javascript
+import { src, dest, watch, series } from 'gulp'
+```
+
+**Código Nuevo:**
+```javascript
+import { src, dest, watch, series, parallel } from 'gulp'
+```
+**Motivo:** Se añadió `parallel` para poder ejecutar tareas de compilación simultáneamente, lo que acelera el proceso inicial.
+
+---
+
+### 2. Tareas `css` y `js`
+
+**Código Original (`css` como ejemplo):**
+```javascript
+export function css(done) {
+    src(paths.scss, { sourcemaps: true })
+        .pipe(sass({
+            outputStyle: 'compressed'
+        }).on('error', sass.logError))
+        .pipe(dest('./public/build/css', { sourcemaps: '.' }));
+    done()
+}
+```
+**Código Nuevo (`css` como ejemplo):**
+```javascript
+export function css() {
+    return src(paths.scss, { sourcemaps: true })
+        .pipe(sass({
+            outputStyle: 'compressed'
+        }).on('error', sass.logError))
+        .pipe(dest('./public/build/css', { sourcemaps: '.' }));
+}
+```
+**Motivo:** Se eliminó el parámetro `done` y la llamada `done()`. En su lugar, ahora se retorna el `stream` de Gulp. Esta es la forma moderna y más segura de indicarle a Gulp que una tarea ha finalizado. Lo mismo se aplicó a la tarea `js`.
+
+---
+
+### 3. Tarea `imagenes`
+
+**Código Original:**
+```javascript
+export async function imagenes(done) {
+    const srcDir = './src/img';
+    const buildDir = './public/build/img';
+    const images = await glob('./src/img/**/*')
+
+    images.forEach(file => {
+        const relativePath = path.relative(srcDir, path.dirname(file));
+        const outputSubDir = path.join(buildDir, relativePath);
+        procesarImagenes(file, outputSubDir);
+    });
+    done();
+}
+```
+**Código Nuevo:**
+```javascript
+export async function imagenes() {
+    const srcDir = './src/img';
+    const buildDir = './public/build/img';
+    const images = await glob('./src/img/**/*');
+
+    const promises = images.map(file => {
+        const relativePath = path.relative(srcDir, path.dirname(file));
+        const outputSubDir = path.join(buildDir, relativePath);
+        return procesarImagenes(file, outputSubDir);
+    });
+    await Promise.all(promises);
+}
+```
+**Motivo:** La versión original no esperaba a que las imágenes se terminaran de procesar. La nueva versión usa `Promise.all` para asegurar que la tarea no finalice hasta que todas y cada una de las imágenes hayan sido creadas y guardadas, evitando errores.
+
+---
+
+### 4. Tarea `export default` (La Lógica Principal)
+
+**Código Original:**
+```javascript
+export default series(js, css, imagenes, dev)
+```
+
+**Código Nuevo:**
+```javascript
+export default series( parallel(js, css, imagenes), dev);
+```
+**Motivo:** Este es el cambio clave para solucionar tu problema.
+*   **Original:** Ejecutaba todas las tareas una tras otra (`series`). Cuando llegaba a `dev`, la iniciaba y el proceso terminaba.
+*   **Nuevo:** Primero, ejecuta las tareas de compilación (`js`, `css`, `imagenes`) **en paralelo** para mayor velocidad. Una vez que **todas** han terminado, ejecuta la tarea `dev`, que ahora sí mantiene el proceso activo para vigilar los cambios.
